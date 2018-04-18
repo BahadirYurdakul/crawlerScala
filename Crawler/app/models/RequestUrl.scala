@@ -7,10 +7,6 @@ case class RequestUrl private(name: String)
 
 object RequestUrl {
   val url: Reads[RequestUrl] = Json.reads[RequestUrl]
-
-  def jsonBuildWithUrl(message: String): JsValue = {
-    val jsonMessage: JsValue = Json.obj("name" -> s"$message")
-    jsonMessage
-  }
+  def jsonBuildWithUrl(message: String): JsValue = Json.obj("name" -> s"$message")
 }
 

@@ -55,12 +55,12 @@ class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: Craw
 
   def decodeRequestData(request: Request[JsValue]): Either[String, String] = {
     parseRequestMessage(request) match {
-      case Right(encodedPubSubData) =>
+      case Right(encodedPubSubData: String) =>
         decodeData(encodedPubSubData) match {
           case Success(decodedData: String) => Right(decodedData)
           case Failure(fail: Throwable) => Left(s"Error while decode pubSubData. Fail: $fail")
         }
-      case Left(errorMessage) =>
+      case Left(errorMessage: String) =>
         Logger.error(s"Error while parse pubSub message. ErrMessage: $errorMessage")
         Left(s"Error while parse pubSub message. ErrMessage: $errorMessage")
     }
@@ -68,12 +68,12 @@ class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: Craw
 
   def extractUrlFromDecodedPubSubData(decodedPubSubData: Either[String, String]): Either[String, String] = {
     decodedPubSubData match {
-      case Right(data) =>
+      case Right(data: String) =>
         parseRequestData(data)  match {
           case Success(url: String) => Right(url)
           case Failure(fail: Throwable) => Left(s"Error while parse pubSub data and extract url. Fail $fail")
         }
-      case Left(errMessage) =>
+      case Left(errMessage: String) =>
         Logger.error(s"Error while decoded pubSubData. Err: $errMessage")
         Left(s"Error while decoded pubSubData. Err: $errMessage")
     }
@@ -107,7 +107,7 @@ class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: Craw
 
   def incrementTryCount(url: String): Either[String, Int] = {
     tryCountsOfMessage.get(url) match {
-      case Some(value) =>
+      case Some(value: Integer) =>
         tryCountsOfMessage += url -> (value + 1)
         if (value >= maxTryCountForUrl) {
           Logger.error(s"Url: $url. Try count exceeded $value")

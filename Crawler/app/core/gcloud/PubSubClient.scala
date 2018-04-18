@@ -38,8 +38,8 @@ class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle)(implici
     val publisher: Publisher = getPublisher(projectId, topicId)
     val messageIdFutures: util.ArrayList[ApiFuture[String]] = new util.ArrayList[ApiFuture[String]]
     for (message: JsValue <- messages) {
-      val pubSubMessage = buildPubSubMessage(message)
-      val messageIdFuture = publisher.publish(pubSubMessage)
+      val pubSubMessage: PubsubMessage = buildPubSubMessage(message)
+      val messageIdFuture: ApiFuture[String] = publisher.publish(pubSubMessage)
       messageIdFutures.add(messageIdFuture)
     }
     val messageIds: util.List[String] = ApiFutures.allAsList(messageIdFutures).get
@@ -51,7 +51,7 @@ class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle)(implici
   private def getPublisher(projectId: String, topicId: String): Publisher = {
     val uniqueHash: Int = projectId.hashCode + topicId.hashCode
     publishers.get(uniqueHash) match {
-      case Some(publisher) => publisher
+      case Some(publisher: Publisher) => publisher
       case None =>
         val topic: ProjectTopicName = topicNameBuilder(projectId, topicId)
         val publisher: Publisher = publisherBuilder(topic)
@@ -61,7 +61,7 @@ class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle)(implici
   }
 
   private def buildPubSubMessage(message: JsValue): PubsubMessage = {
-    val data = ByteString.copyFromUtf8(Json.stringify(message))
+    val data: ByteString = ByteString.copyFromUtf8(Json.stringify(message))
     PubsubMessage.newBuilder.setData(data).build
   }
 

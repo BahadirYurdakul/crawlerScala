@@ -3,9 +3,9 @@ package services
 import javax.inject.{Inject, Singleton}
 
 import com.google.cloud.datastore.Entity
-import core.gcloud.{CloudStorageClient, PubSubClient}
+import core.gcloud.PubSubClient
 import core.UrlHelper
-import core.helpers.{DownloadPageHelper, ScrapeLinksHelper, ZipHelper}
+import core.helpers.{DownloadPageHelper, ScrapeLinksHelper}
 import core.utils.{StatusKey, UrlModel}
 import models.{DataStoreModel, RequestUrl}
 import play.Logger
@@ -17,13 +17,11 @@ import scala.concurrent._
 import scala.util.{Failure, Success}
 
 @Singleton
-class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStoreRepository: DataStoreRepository
-                               , statusKey: StatusKey, pubSubClient: PubSubClient
-                               , scrapeLinksHelper: ScrapeLinksHelper, config: Configuration
-                               , cloudStorageClient: CloudStorageClient
-                               , cloudStorageRepository: CloudStorageRepository
-                               , zipHelper: ZipHelper
-                               , urlHelper: UrlHelper)
+class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStoreRepository: DataStoreRepository,
+                               statusKey: StatusKey, pubSubClient: PubSubClient,
+                               scrapeLinksHelper: ScrapeLinksHelper, config: Configuration,
+                               cloudStorageRepository: CloudStorageRepository,
+                               urlHelper: UrlHelper)
                               (implicit executionContext: ExecutionContext) {
 
   val crawlerProjectId: String = config.getOptional[String]("crawlerProjectId").getOrElse("crawlernode")
@@ -44,7 +42,7 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
     }
 
     dataStoreRepository.getDataByUrlHostWithPath(parentParsedUrl.hostWithPath) map { parentEntity =>
-      determineCrawlOrNot(url, parentEntity)
+      determineCrawl(url, parentEntity)
     } flatMap  { _ => dataStoreRepository.setParentStatus(parentParsedUrl, statusKey.inProgress)
     } map  { _ => downloadPageHelper.downloadPage(url)
     } flatMap  { rawHtml => cloudStorageRepository.uploadToCloudStorage(encodedUrl, rawHtml)
@@ -63,8 +61,8 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
 
   def extractChildUrls(parentParsedUrl: UrlModel, rawHtml: String): List[UrlModel] = {
     val childUrls: List[UrlModel] = scrapeLinksHelper.scrapeLinks(parentParsedUrl.protocolWithHostWithPath, rawHtml) match {
-      case Success(value) => value
-      case Failure(fail) =>
+      case Success(value: List[UrlModel]) => value
+      case Failure(fail: Throwable) =>
         Logger.error(s"Url: ${parentParsedUrl.hostWithPath}. Error while scrape links from html.")
         throw fail
     }
@@ -81,7 +79,7 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
   }
 
   @throws(classOf[IllegalToCrawlUrlException])
-  def determineCrawlOrNot(url: String, parentEntity: Entity): Unit = {
+  def determineCrawl(url: String, parentEntity: Entity): Unit = {
     if(parentEntity == null)
       return
     val status: String = parentEntity.getString("status")

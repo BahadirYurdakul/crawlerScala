@@ -15,7 +15,7 @@ class UrlHelper @Inject()() {
   }
 
   def getDomainFromHost(host: String): Try[String] = Try {
-    val domainArray = host.split('.')
+    val domainArray: Array[String] = host.split('.')
     if(domainArray == null || domainArray.length < 2){
       Logger.error(s"Url host is invalid while trying to get domain from host. Host: $host")
       return Failure(new Exception(s"Url host is invalid. Host: $host"))

@@ -6,6 +6,7 @@ import javax.inject.{Inject, Singleton}
 import core.UrlHelper
 import core.utils.UrlModel
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import play.api.Logger
 
 import scala.collection.mutable
@@ -16,7 +17,7 @@ class ScrapeLinksHelper @Inject ()(urlHelper: UrlHelper) {
 
   def scrapeLinks(baseUrl: String,rawHtml: String): Try[List[UrlModel]] = Try {
     val parsedUrls: mutable.Set[UrlModel] = mutable.Set()
-    val doc = Jsoup.parse(rawHtml, baseUrl)
+    val doc: Document = Jsoup.parse(rawHtml, baseUrl)
     val linksOnPage = doc.body.select("[href]")
 
     linksOnPage.forEach(linkElement => {
