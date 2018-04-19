@@ -3,54 +3,51 @@ package services
 import javax.inject.{Inject, Singleton}
 
 import com.google.cloud.datastore.Entity
-import core.gcloud.PubSubClient
+import core.gcloud.{CloudStorageClient, PubSubClient}
 import core.UrlHelper
 import core.helpers.{DownloadPageHelper, ScrapeLinksHelper}
 import core.utils.{StatusKey, UrlModel}
-import models.{DataStoreModel, RequestUrl}
+import models.RequestUrl
 import play.Logger
 import play.api.Configuration
 import play.api.libs.json.JsValue
-import repository.{CloudStorageRepository, DataStoreRepository}
+import repository.{CrawlerUrlDataStoreRepository, CrawlerUrlModel}
 
 import scala.concurrent._
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 @Singleton
-class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStoreRepository: DataStoreRepository,
+class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStoreRepository: CrawlerUrlDataStoreRepository,
                                statusKey: StatusKey, pubSubClient: PubSubClient,
                                scrapeLinksHelper: ScrapeLinksHelper, config: Configuration,
-                               cloudStorageRepository: CloudStorageRepository,
+                               crawlerUrlRepository: CrawlerUrlDataStoreRepository,
+                               cloudStorageClient: CloudStorageClient,
                                urlHelper: UrlHelper)
                               (implicit executionContext: ExecutionContext) {
 
-  val crawlerProjectId: String = config.getOptional[String]("crawlerProjectId").getOrElse("crawlernode")
-  val crawlerPubSubTopicName: String = config.getOptional[String]("crawlerPubSubTopicName").getOrElse("scalaCrawler")
+  private val crawlerProjectId: String = config.get[String]("crawlerProjectId")
+  private val crawlerPubSubTopicName: String = config.get[String]("crawlerPubSubTopicName")
+  private val bucketName: String = config.get[String]("crawlerBucket")
 
   def crawl(url: String): Future[Unit] = {
-    val parentParsedUrl: UrlModel = UrlModel(url, urlHelper) match {
+    val parentParsedUrl: UrlModel = UrlModel.parse(url, urlHelper) match {
       case Success(value: UrlModel) => value
-      case Failure(fail: Throwable) =>
+      case Failure(NonFatal(fail)) =>
         Logger.error(s"Url: $url. Error while getting url model. Fail $fail")
         return Future.successful((): Unit)
     }
-    val encodedUrl: String = urlHelper.encodeUrl(url) match {
-      case Success(value: String) => value
-      case Failure(fail: Throwable) =>
-        Logger.error(s"Url: ${parentParsedUrl.hostWithPath}. Error while encoding url. Fail $fail")
-        return Future.successful((): Unit)
-    }
 
-    dataStoreRepository.getDataByUrlHostWithPath(parentParsedUrl.hostWithPath) map { parentEntity =>
-      determineCrawl(url, parentEntity)
-    } flatMap  { _ => dataStoreRepository.setParentStatus(parentParsedUrl, statusKey.inProgress)
-    } map  { _ => downloadPageHelper.downloadPage(url)
-    } flatMap  { rawHtml => cloudStorageRepository.uploadToCloudStorage(encodedUrl, rawHtml)
-    } flatMap  { rawHtml => extractUrlsAndRecordThem(parentParsedUrl, rawHtml)
-    } flatMap { _ => dataStoreRepository.setParentStatus(parentParsedUrl, statusKey.done)
+    isCrawlNeeded(url) map { isNeeded: Boolean =>
+      if(!isNeeded) throw IllegalToCrawlUrlException(s"Url: ${parentParsedUrl.hostWithPath}. Url doesn't need to be crawled")
+      dataStoreRepository.setParentStatus(parentParsedUrl, statusKey.inProgress)
+    } flatMap { _ =>
+      downloadPageAndUploadToCloudStorage(url)
+    } flatMap { rawHtml =>
+      extractUrlsThenRecordThem(parentParsedUrl, rawHtml)
     } recoverWith {
       case _: IllegalToCrawlUrlException =>
-        Logger.debug(s"Url: ${parentParsedUrl.hostWithPath}. Url is already crawled")
+        Logger.debug(s"Url: ${parentParsedUrl.hostWithPath}. Url doesn't need to be crawled")
         Future.successful((): Unit)
       case fail: Throwable =>
         Logger.error(s"Url: ${parentParsedUrl.hostWithPath}. Error while crawling url. Fail: $fail")
@@ -78,37 +75,52 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
     })
   }
 
-  @throws(classOf[IllegalToCrawlUrlException])
-  def determineCrawl(url: String, parentEntity: Entity): Unit = {
-    if(parentEntity == null)
-      return
-    val status: String = parentEntity.getString("status")
-    if(status == null)
-      return
-    if(status == statusKey.done) {
-      Logger.debug(s"Url: $url. Url is already crawled.")
-      throw IllegalToCrawlUrlException(s"Url: $url. Url is already crawled.")
-    }
-    else if(status == statusKey.inProgress) {
-      Logger.debug(s"Url: $url. Url is in progress.")
-      throw IllegalToCrawlUrlException(s"Url: $url. Url is in progress.")
+  def isCrawlNeeded(url: String): Future[Boolean] = {
+    crawlerUrlRepository.getDataStatusByUrlHostWithPath(url) map { status: Option[String] =>
+      status match {
+        case Some(stat: String) =>
+          if(stat == statusKey.done || stat == statusKey.inProgress) {
+            false
+          } else {
+            true
+          }
+        case None => true
+      }
+    } recover {
+      case NonFatal(fail) =>
+        Logger.error(s" Url $url. Error while checking if crawling needed. Fail $fail")
+        true
     }
   }
 
-  def extractUrlsAndRecordThem(parentParsedUrl: UrlModel, rawHtml: String): Future[Unit] = {
+  def extractUrlsThenRecordThem(parentParsedUrl: UrlModel, rawHtml: String): Future[Unit] = {
     val childLinks: List[UrlModel] = extractChildUrls(parentParsedUrl, rawHtml)
-    val childDataStoreEntities: List[DataStoreModel] = dataStoreRepository.convertUrlModelToDataStoreModel(childLinks)
+    val childDataStoreEntities: List[CrawlerUrlModel] = dataStoreRepository.convertUrlModelToDataStoreModel(childLinks)
+    val messageList: List[JsValue] = childLinks.map(childLink =>
+      RequestUrl.jsonBuildWithUrl(childLink.protocolWithHostWithPath)
+    )
 
     dataStoreRepository.insertToDataStore(parentParsedUrl.hostWithPath, childDataStoreEntities) map { _ =>
-      val messageList: List[JsValue] = childLinks.map(childLink =>
-        RequestUrl.jsonBuildWithUrl(childLink.protocolWithHostWithPath)
-      )
       //pubSubClient.publishToPubSub(crawlerProjectId, crawlerPubSubTopicName, messageList)
+    } flatMap { _ =>
+      dataStoreRepository.setParentStatus(parentParsedUrl, statusKey.done)
     } recoverWith {
       case fail: Throwable =>
         Logger.error(s"Url: ${parentParsedUrl.hostWithPath}. Error while extract links and record. Fail: $fail")
         Future.failed(fail)
     }
+  }
+
+  def downloadPageAndUploadToCloudStorage(url: String): Future[String] = {
+    val encodedUrl: String = urlHelper.encodeUrl(url) match {
+      case Success(value: String) => value
+      case Failure(NonFatal(fail)) =>
+        Logger.error(s"Url: $url. Error while encoding url. Fail $fail")
+        return Future.failed(fail)
+    }
+
+    val rawHtml: String = downloadPageHelper.downloadPage(url)
+    cloudStorageClient.zipThenUploadToCloudStorage(encodedUrl, rawHtml, bucketName)
   }
 
   case class IllegalToCrawlUrlException(private val message: String = "", private val cause: Throwable = None.orNull)

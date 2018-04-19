@@ -1,6 +1,14 @@
 import com.google.inject.AbstractModule
 import java.time.Clock
 
+import controllers.CrawlerController
+import core.UrlHelper
+import core.gcloud.{CloudStorageClient, DataStoreClient, PubSubClient}
+import core.helpers.{DownloadPageHelper, ScrapeLinksHelper, ZipHelper}
+import dispatchers.{GCloudExecutor, WebsiteDownloaderExecutor}
+import repository.{CloudStorageRepository, CrawlerUrlDataStoreRepository}
+import services.CrawlerService
+
 
 /**
  * This class is a Guice module that tells Guice how to bind several
@@ -15,6 +23,19 @@ import java.time.Clock
 class Module extends AbstractModule {
 
   override def configure(): Unit = {
+    bind(classOf[CrawlerController]).asEagerSingleton()
+    bind(classOf[CloudStorageClient]).asEagerSingleton()
+    bind(classOf[DataStoreClient]).asEagerSingleton()
+    bind(classOf[PubSubClient]).asEagerSingleton()
+    bind(classOf[DownloadPageHelper]).asEagerSingleton()
+    bind(classOf[ScrapeLinksHelper]).asEagerSingleton()
+    bind(classOf[ZipHelper]).asEagerSingleton()
+    bind(classOf[UrlHelper]).asEagerSingleton()
+    bind(classOf[GCloudExecutor]).asEagerSingleton()
+    bind(classOf[WebsiteDownloaderExecutor]).asEagerSingleton()
+    bind(classOf[CloudStorageRepository]).asEagerSingleton()
+    bind(classOf[CrawlerUrlDataStoreRepository]).asEagerSingleton()
+    bind(classOf[CrawlerService]).asEagerSingleton()
   }
 
 }

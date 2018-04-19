@@ -8,7 +8,7 @@ import play.Logger
 import scala.util.{Failure, Try}
 
 @Singleton
-class UrlHelper @Inject()() {
+class UrlHelper {
   def parseUrl(url: String): Try[URL] = Try {
     val parsedUrl: URL = new URL(url)
     parsedUrl

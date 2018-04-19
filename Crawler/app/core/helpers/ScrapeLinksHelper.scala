@@ -24,7 +24,7 @@ class ScrapeLinksHelper @Inject ()(urlHelper: UrlHelper) {
       try {
         val link: String = linkElement.attr("abs:href")
         Logger.debug(s"Url: $baseUrl. Extracted link $link")
-        val childUrl: UrlModel = UrlModel(link, urlHelper) match {
+        val childUrl: UrlModel = UrlModel.parse(link, urlHelper) match {
           case Success(value: UrlModel) => value
           case Failure(fail: Throwable) =>
             Logger.error(s"Url: $baseUrl. Error while extracting child link model. Child link: $link. Fail $fail")

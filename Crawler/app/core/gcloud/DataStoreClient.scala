@@ -12,6 +12,7 @@ import play.api.Configuration
 import play.api.inject.ApplicationLifecycle
 
 import scala.concurrent.Future
+import scala.util.control.NonFatal
 
 @Singleton
 class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, config: Configuration)
@@ -63,7 +64,7 @@ class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, conf
       Logger.debug(s"Data store item get: $item")
       item
     } catch {
-      case fail: Throwable =>
+      case NonFatal(fail) =>
         Logger.error(s"Error while get data from dataStore. Fail: $fail ")
         return Future.failed(fail)
     }

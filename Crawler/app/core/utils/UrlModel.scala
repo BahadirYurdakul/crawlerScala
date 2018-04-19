@@ -19,7 +19,7 @@ class UrlModel(val parsedUrl: URL, val domain: String, val protocol: String, val
 }
 
 object UrlModel {
-  def apply(url: String, urlHelper: UrlHelper): Try[UrlModel] = {
+  def parse(url: String, urlHelper: UrlHelper): Try[UrlModel] = {
     val parsedUrl: URL = urlHelper.parseUrl(url) match {
       case Success(value) => value
       case Failure(fail) => return Failure(fail)
