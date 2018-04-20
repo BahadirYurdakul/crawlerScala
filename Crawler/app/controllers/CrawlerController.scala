@@ -14,6 +14,19 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
+case class DecodeDataException(private val message: String = "", private val cause: Throwable = None.orNull)
+  extends Exception(message, cause)
+
+case class PubSubMessageParseException(private val message: String = "", private val cause: Throwable = None.orNull)
+  extends Exception(message, cause)
+
+case class InvalidJsonBodyException(private val message: String = "", private val cause: Throwable = None.orNull)
+  extends Exception(message, cause)
+
+case class TryCountExceededException(private val message: String = "", private val cause: Throwable = None.orNull)
+  extends Exception(message, cause)
+
+
 @Singleton
 class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: CrawlerService, config: Configuration)
                                  (implicit executor: ExecutionContext) extends AbstractController(cc) {
@@ -23,70 +36,63 @@ class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: Craw
 
   def crawl(): Action[JsValue] = Action.async(parse.json) { request: Request[JsValue] =>
     Logger.debug("Crawling started.")
-    val decodedPubSubData: Either[String, String] = decodeRequestData(request)
-    val eitherUrl: Either[String, String] = extractUrlFromDecodedPubSubData(decodedPubSubData)
+    val decodedPubSubData: Either[Throwable, String] = decodeRequestData(request)
+    val eitherUrl: Either[Throwable, String] = extractUrlFromDecodedPubSubData(decodedPubSubData)
 
     val result: Future[Result] = eitherUrl match {
       case Right(url: String) =>
         callCrawlerService(url)
-      case Left(errMessage: String) =>
-        Logger.error(s"Cannot extract url from pubSubMessage. Err: $errMessage")
+      case Left(fail: Throwable) =>
+        Logger.error(s"Cannot extract url from pubSubMessage. Err: $fail")
         Future.successful(Ok("Cannot extract url from pubSubMessage."))
     }
     result
   }
 
   def callCrawlerService(url: String): Future[Result] = {
-    incrementTryCount(url) match {
-      case Right(_) =>
-        crawlerService.crawl(url) map (_ => {
-          Logger.debug(s"Url: $url is crawled successfully.")
-          deleteFromTryCount(url)
-          Ok(s"Url is crawled successfully $url")
-        }) recover {
-          case NonFatal(fail) =>
-            Logger.error(s"Url: $url cannot be crawled. Fail: $fail")
-            BadRequest(s"Url: $url cannot be crawled. Fail $fail")
-        }
-      case Left(errorMessage: String) =>
-        Logger.error(errorMessage)
-        Future.successful(Ok(errorMessage))
+    crawlerService.crawl(url) map (_ => {
+      Logger.debug(s"Url: $url is crawled successfully.")
+      Ok(s"Url is crawled successfully $url")
+    }) recover {
+      case NonFatal(fail) =>
+        Logger.error(s"Url: $url cannot be crawled. Fail: $fail")
+        BadRequest(s"Url: $url cannot be crawled. Fail $fail")
     }
   }
 
-  def decodeRequestData(request: Request[JsValue]): Either[String, String] = {
+  def decodeRequestData(request: Request[JsValue]): Either[Throwable, String] = {
     parseRequestMessage(request) match {
       case Right(encodedPubSubData: String) =>
         decodeData(encodedPubSubData) match {
           case Success(decodedData: String) => Right(decodedData)
-          case Failure(NonFatal(fail)) => Left(s"Error while decode pubSubData. Fail: $fail")
+          case Failure(NonFatal(fail)) => Left(fail)
         }
-      case Left(errorMessage: String) =>
-        Logger.error(s"Error while parse pubSub message. ErrMessage: $errorMessage")
-        Left(s"Error while parse pubSub message. ErrMessage: $errorMessage")
+      case Left(fail: Throwable) =>
+        Logger.error(s"Error while parse pubSub message. ErrMessage: $fail")
+        Left(fail)
     }
   }
 
-  def extractUrlFromDecodedPubSubData(decodedPubSubData: Either[String, String]): Either[String, String] = {
+  def extractUrlFromDecodedPubSubData(decodedPubSubData: Either[Throwable, String]): Either[Throwable, String] = {
     decodedPubSubData match {
       case Right(data: String) =>
-        parseRequestData(data)  match {
+        parseRequestData(data) match {
           case Success(url: String) => Right(url)
-          case Failure(NonFatal(fail)) => Left(s"Error while parse pubSub data and extract url. Fail $fail")
+          case Failure(NonFatal(fail)) => Left(PubSubMessageParseException(s"Error while parse pubSub data and extract url. Fail $fail"))
         }
-      case Left(errMessage: String) =>
-        Logger.error(s"Error while decoded pubSubData. Err: $errMessage")
-        Left(s"Error while decoded pubSubData. Err: $errMessage")
+      case Left(fail: Throwable) =>
+        Logger.error(s"Error while decode pubSubData. Err: $fail")
+        Left(fail)
     }
   }
 
-  def parseRequestMessage(request: Request[JsValue]): Either[String, String] = {
+  def parseRequestMessage(request: Request[JsValue]): Either[Throwable, String] = {
     request.body.validate(PubSubMessage.message) match  {
       case message: JsSuccess[PubSubMessage] =>
         Right(message.get.message.data)
       case fail: JsError =>
         Logger.error(s"Invalid json body. Fail $fail")
-        Left(s"Invalid json body. Fail $fail")
+        Left(InvalidJsonBodyException("Invalid json body. Fail $fail"))
     }
   }
 
@@ -104,24 +110,5 @@ class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: Craw
         Logger.error(s"Invalid json body. Fail $fail")
         return Failure(new Exception(fail.errors.mkString(", ")))
     }
-  }
-
-  def incrementTryCount(url: String): Either[String, Int] = {
-    tryCountsOfMessage.get(url) match {
-      case Some(value: Integer) =>
-        tryCountsOfMessage += url -> (value + 1)
-        if (value >= maxTryCountForUrl) {
-          Logger.error(s"Url: $url. Try count exceeded $value")
-          Left(s"Url: $url. Try count exceeded $value")
-        } else
-          Right(value + 1)
-      case None =>
-        tryCountsOfMessage += url -> 1
-        Right(1)
-    }
-  }
-
-  def deleteFromTryCount(messageId: String): Unit = {
-    tryCountsOfMessage.remove(messageId)
   }
 }

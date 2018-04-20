@@ -3,6 +3,7 @@ package core.utils
 import java.net.URL
 
 import core.UrlHelper
+import play.api.Logger
 
 import scala.util.{Failure, Success, Try}
 
@@ -16,12 +17,16 @@ object UrlModel {
 
     val parsedUrl: URL = urlHelper.parseUrl(url) match {
       case Success(value) => value
-      case Failure(fail) => return Failure(UrlParseException(s"Url $url. Error while parse: ${fail.getMessage}"))
+      case Failure(fail) =>
+        Logger.error(s"Url $url. Error while parse: ${fail.getMessage}")
+        throw UrlParseException(s"Url $url. Error while parse: ${fail.getMessage}")
     }
 
     val domain: String = urlHelper.getDomainFromHost(parsedUrl.getHost) match {
       case Success(value) => value
-      case Failure(fail) => return Failure(UrlParseException(s"Url $url. Error while get domain: ${fail.getMessage}"))
+      case Failure(fail) =>
+        Logger.error(s"Url $url. Error while get domain: ${fail.getMessage}")
+        throw UrlParseException(s"Url $url. Error while get domain: ${fail.getMessage}")
     }
 
     val protocol: String = parsedUrl.getProtocol
@@ -29,6 +34,7 @@ object UrlModel {
     val hostWithPath: String = "^www.".r.replaceFirstIn(parsedUrl.getHost, "") + parsedUrl.getPath + getQuery(parsedUrl)
     val protocolWithHostWithPath: String = protocolWithHost + parsedUrl.getPath + getQuery(parsedUrl)
     Success(UrlModel(parsedUrl, domain, protocol, protocolWithHost, hostWithPath, protocolWithHostWithPath))
+
   }
 
   def getQuery(parsedUrl: URL): String = {

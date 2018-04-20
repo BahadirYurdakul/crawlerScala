@@ -2,6 +2,7 @@ package services
 
 import javax.inject.{Inject, Singleton}
 
+import com.google.cloud.datastore.Entity
 import core.gcloud.{CloudStorageClient, PubSubClient}
 import core.UrlHelper
 import core.helpers.{DownloadPageHelper, ScrapeLinksHelper}
@@ -14,11 +15,16 @@ import repository.{CrawlerUrlDataStoreRepository, CrawlerUrlModel}
 
 import scala.concurrent._
 import scala.util.control.NonFatal
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success}
+
+case class IllegalToCrawlUrlException(private val message: String = "", private val cause: Throwable = None.orNull)
+  extends Exception(message, cause)
+
+case class StatusWithTryCount(status: StatusKey.Value, failedCount: Int)
 
 @Singleton
 class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStoreRepository: CrawlerUrlDataStoreRepository,
-                               statusKey: StatusKey, pubSubClient: PubSubClient,
+                               pubSubClient: PubSubClient,
                                scrapeLinksHelper: ScrapeLinksHelper, config: Configuration,
                                crawlerUrlRepository: CrawlerUrlDataStoreRepository,
                                cloudStorageClient: CloudStorageClient,
@@ -28,6 +34,7 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
   private val crawlerProjectId: String = config.get[String]("crawlerProjectId")
   private val crawlerPubSubTopicName: String = config.get[String]("crawlerPubSubTopicName")
   private val bucketName: String = config.get[String]("crawlerBucket")
+  private val maxTryCountForUrl: Int = config.getOptional[Int]("maxTryCountForUrl").getOrElse(10)
 
   def crawl(url: String): Future[Unit] = {
 
@@ -39,7 +46,7 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
             Future.successful((): Unit)
           case NonFatal(fail) =>
             Logger.error(s"Url: ${parsedUrl.hostWithPath}. Error while crawling url. Fail: $fail")
-            dataStoreRepository.setParentStatus(parsedUrl, statusKey.notCrawled)
+            dataStoreRepository.setParentStatus(parsedUrl, StatusKey.NotCrawled)
             Future.failed(fail)
         }
       case Failure(NonFatal(fail)) =>
@@ -55,7 +62,7 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
       _ <- if (!isNeeded) {
         Future.failed(throw IllegalToCrawlUrlException(s"Url: ${parentParsedUrl.hostWithPath}. Url doesn't need to be crawled"))
       } else{
-        dataStoreRepository.setParentStatus(parentParsedUrl, statusKey.inProgress)
+        dataStoreRepository.setParentStatus(parentParsedUrl, StatusKey.InProgress)
       }
       rawHtml: String <- downloadPageAndUploadToCloudStorage(url)
       out <- extractUrlsThenRecordThem(parentParsedUrl, rawHtml)
@@ -82,11 +89,10 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
   }
 
   def isCrawlNeeded(url: String): Future[Boolean] = {
-    crawlerUrlRepository.getDataStatusByUrlHostWithPath(url) map { status: Option[String] =>
+    crawlerUrlRepository.getDataStatusByUrlHostWithPath(url) map { status: Option[StatusKey.Value] =>
       status match {
-        case Some(stat: String) =>
-          if (stat == statusKey.done || stat == statusKey.inProgress) false else true
-        case None => true
+        case Some(StatusKey.Done) | Some(StatusKey.InProgress) => false
+        case _ => true
       }
     } recover {
       case NonFatal(fail) =>
@@ -105,7 +111,7 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
     dataStoreRepository.insertToDataStore(parentParsedUrl.hostWithPath, childDataStoreEntities) map { _ =>
       //pubSubClient.publishToPubSub(crawlerProjectId, crawlerPubSubTopicName, messageList)
     } flatMap { _ =>
-      dataStoreRepository.setParentStatus(parentParsedUrl, statusKey.done)
+      dataStoreRepository.setParentStatus(parentParsedUrl, StatusKey.Done)
     } recoverWith {
       case NonFatal(fail) =>
         Logger.error(s"Url: ${parentParsedUrl.hostWithPath}. Error while extract links and record. Fail: $fail")
@@ -124,8 +130,5 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
     val rawHtml: String = downloadPageHelper.downloadPage(url)
     cloudStorageClient.zipThenUploadToCloudStorage(encodedUrl, rawHtml, bucketName)
   }
-
-  case class IllegalToCrawlUrlException(private val message: String = "", private val cause: Throwable = None.orNull)
-    extends Exception(message, cause)
 
 }

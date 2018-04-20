@@ -15,17 +15,11 @@ import scala.util.control.NonFatal
 case class CrawlerUrlModel(id: String, protocol: String, domain: String, status: String)
 
 @Singleton
-class CrawlerUrlDataStoreRepository @Inject()(dataStoreClient: DataStoreClient,
-                                              statusKey: StatusKey,
-                                              config: Configuration)
+class CrawlerUrlDataStoreRepository @Inject()(dataStoreClient: DataStoreClient, config: Configuration)
                                              (implicit executionContext: ExecutionContext) {
 
   private val dataStore: Datastore = dataStoreClient.getDataStore(config.get[String]("crawlerProjectId"))
   private val keyFactory: KeyFactory = dataStoreClient.getKeyFactory(dataStore, config.get[String]("crawlerUrlKindForDataStore"))
-
-  def getDataStore(projectId: String): Datastore = dataStoreClient.getDataStore(projectId)
-
-  def getKeyFactory(dataStore: Datastore, kindName: String): KeyFactory = dataStore.newKeyFactory.setKind(kindName)
 
   def insertToDataStore(url: String, crawlerUrlModelList: List[CrawlerUrlModel]): Future[Unit] = {
     val dataList: List[Entity] = crawlerUrlModelList.map(crawlerUrlModelList => createDataStoreInstance(crawlerUrlModelList))
@@ -50,16 +44,16 @@ class CrawlerUrlDataStoreRepository @Inject()(dataStoreClient: DataStoreClient,
     dataStoreClient.getData(dataStore, keyFactory, hostWithPath) recoverWith {
       case NonFatal(fail) =>
         Logger.error(s"Url: $hostWithPath. Cannot get data from dataStore by its url. Fail $fail")
-        return Future.failed(fail)
+        Future.failed(fail)
     }
   }
 
-  def getDataStatusByUrlHostWithPath(hostWithPath: String): Future[Option[String]] = {
+  def getDataStatusByUrlHostWithPath(hostWithPath: String): Future[Option[StatusKey.Value]] = {
     getDataByUrlHostWithPath(hostWithPath) map { entity: Option[Entity] =>
       entity match {
         case Some(value: Entity) =>
           try {
-            Some(value.getString("status"))
+            Some(StatusKey.values.find(_.toString == value.getString("status")).getOrElse(StatusKey.Unknown))
           } catch {
             case NonFatal(fail) =>
               Logger.error(s"Url: $hostWithPath cannot get status from data store. Fail: $fail")
@@ -70,8 +64,8 @@ class CrawlerUrlDataStoreRepository @Inject()(dataStoreClient: DataStoreClient,
     }
   }
 
-  def setParentStatus(url: UrlModel, statusKey: String): Future[Unit] = {
-    val data: Entity = createDataStoreInstance(CrawlerUrlModel(url.hostWithPath, url.protocol, url.domain, statusKey))
+  def setParentStatus(url: UrlModel, status: StatusKey.Value): Future[Unit] = {
+    val data: Entity = createDataStoreInstance(CrawlerUrlModel(url.hostWithPath, url.protocol, url.domain, status.toString))
     dataStoreClient.upsertData(dataStore, data) recoverWith {
       case NonFatal(fail) =>
         Logger.error(s"Url: ${url.hostWithPath}. Cannot change the status of parent. Fail $fail")
@@ -85,6 +79,6 @@ class CrawlerUrlDataStoreRepository @Inject()(dataStoreClient: DataStoreClient,
   }
 
   def convertUrlModelToDataStoreModel(links: List[UrlModel]): List[CrawlerUrlModel] = {
-    links.map(childUrl => CrawlerUrlModel(childUrl.hostWithPath, childUrl.protocol, childUrl.domain, statusKey.notCrawled))
+    links.map(childUrl => CrawlerUrlModel(childUrl.hostWithPath, childUrl.protocol, childUrl.domain, StatusKey.NotCrawled.toString))
   }
 }
