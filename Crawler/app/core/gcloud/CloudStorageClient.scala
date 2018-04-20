@@ -9,6 +9,7 @@ import dispatchers.GCloudExecutor
 import scala.concurrent.Future
 import play.Logger
 
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 @Singleton
@@ -26,7 +27,7 @@ class CloudStorageClient@Inject ()()(implicit executionContext: GCloudExecutor, 
       Logger.debug(s"FileName: $fileName. Content uploaded to cloud storage successfully. " +
         s"BucketName $bucketName. Content $content")
     } recoverWith {
-      case fail: Throwable =>
+      case NonFatal(fail) =>
         Logger.error(s"FileName: $fileName. Content cannot be uploaded to cloud storage. " +
           s"BucketName $bucketName. Content $content")
         Future.failed(fail)
@@ -36,7 +37,7 @@ class CloudStorageClient@Inject ()()(implicit executionContext: GCloudExecutor, 
   def zipThenUploadToCloudStorage(filename: String, content: String, bucketName: String): Future[String] = {
     val compressed: Array[Byte] = zipHelper.zipContent(filename, content) match {
       case Success(value: Array[Byte]) => value
-      case Failure(fail: Throwable) =>
+      case Failure(NonFatal(fail)) =>
         Logger.error(s"Filename: $filename. Error while zipping content. Content: $content")
         return Future.failed(fail)
     }
@@ -44,7 +45,7 @@ class CloudStorageClient@Inject ()()(implicit executionContext: GCloudExecutor, 
     uploadToCloudStorage(filename, compressed, bucketName) flatMap { _ =>
       Future.successful(content)
     } recoverWith {
-      case fail: Throwable =>
+      case NonFatal(fail) =>
         Logger.error(s"FileName: $filename. Error while uploading data to cloud storage. Content: $content")
         Future.failed(fail)
     }

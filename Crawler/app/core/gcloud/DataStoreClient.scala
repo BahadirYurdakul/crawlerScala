@@ -37,7 +37,7 @@ class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, conf
     } catch {
       case e: com.google.cloud.datastore.DatastoreException if e.getCode == 6 =>
         Logger.debug(s"Entity already exist error while inserting to data store $dataList. Exception $e")
-      case exc: Throwable =>
+      case NonFatal(exc) =>
         Logger.error(s"Exception while insert data to dataStore $dataList. Exception $exc")
         Future.failed(exc)
     }
@@ -47,7 +47,7 @@ class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, conf
     try {
       dataStore.put(data)
     } catch {
-      case fail: Throwable =>
+      case NonFatal(fail) =>
         Logger.error(s"Error while upserting data to dataStore. Fail: $fail")
         Future.failed(fail)
     }
@@ -57,16 +57,16 @@ class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, conf
     keyFactory.newKey(id)
   }
 
-  def getData(dataStore: Datastore, keyFactory: KeyFactory, key: String): Future[Entity] = Future[Entity] {
+  def getData(dataStore: Datastore, keyFactory: KeyFactory, key: String): Future[Option[Entity]] = {
     try {
       val taskKey: Key = createKey(keyFactory, key)
       val item: Entity = dataStore.get(taskKey, ReadOption.eventualConsistency())
       Logger.debug(s"Data store item get: $item")
-      item
+      Future.successful(Option(item))
     } catch {
       case NonFatal(fail) =>
         Logger.error(s"Error while get data from dataStore. Fail: $fail ")
-        return Future.failed(fail)
+        Future.failed(fail)
     }
   }
 
@@ -75,7 +75,7 @@ class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, conf
       val taskKey: Key = createKey(keyFactory, key)
       dataStore.delete(taskKey)
     } catch {
-      case dataStoreException: Throwable =>
+      case NonFatal(dataStoreException) =>
         Logger.error("Error while delete data from dataStore")
         Future.failed(dataStoreException)
     }

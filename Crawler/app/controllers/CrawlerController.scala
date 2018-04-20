@@ -11,6 +11,7 @@ import services.CrawlerService
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 @Singleton
@@ -43,7 +44,7 @@ class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: Craw
           deleteFromTryCount(url)
           Ok(s"Url is crawled successfully $url")
         }) recover {
-          case fail: Throwable =>
+          case NonFatal(fail) =>
             Logger.error(s"Url: $url cannot be crawled. Fail: $fail")
             BadRequest(s"Url: $url cannot be crawled. Fail $fail")
         }
@@ -58,7 +59,7 @@ class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: Craw
       case Right(encodedPubSubData: String) =>
         decodeData(encodedPubSubData) match {
           case Success(decodedData: String) => Right(decodedData)
-          case Failure(fail: Throwable) => Left(s"Error while decode pubSubData. Fail: $fail")
+          case Failure(NonFatal(fail)) => Left(s"Error while decode pubSubData. Fail: $fail")
         }
       case Left(errorMessage: String) =>
         Logger.error(s"Error while parse pubSub message. ErrMessage: $errorMessage")
@@ -71,7 +72,7 @@ class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: Craw
       case Right(data: String) =>
         parseRequestData(data)  match {
           case Success(url: String) => Right(url)
-          case Failure(fail: Throwable) => Left(s"Error while parse pubSub data and extract url. Fail $fail")
+          case Failure(NonFatal(fail)) => Left(s"Error while parse pubSub data and extract url. Fail $fail")
         }
       case Left(errMessage: String) =>
         Logger.error(s"Error while decoded pubSubData. Err: $errMessage")

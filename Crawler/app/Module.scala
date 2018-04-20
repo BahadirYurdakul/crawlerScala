@@ -6,7 +6,7 @@ import core.UrlHelper
 import core.gcloud.{CloudStorageClient, DataStoreClient, PubSubClient}
 import core.helpers.{DownloadPageHelper, ScrapeLinksHelper, ZipHelper}
 import dispatchers.{GCloudExecutor, WebsiteDownloaderExecutor}
-import repository.{CloudStorageRepository, CrawlerUrlDataStoreRepository}
+import repository.CrawlerUrlDataStoreRepository
 import services.CrawlerService
 
 
@@ -33,7 +33,6 @@ class Module extends AbstractModule {
     bind(classOf[UrlHelper]).asEagerSingleton()
     bind(classOf[GCloudExecutor]).asEagerSingleton()
     bind(classOf[WebsiteDownloaderExecutor]).asEagerSingleton()
-    bind(classOf[CloudStorageRepository]).asEagerSingleton()
     bind(classOf[CrawlerUrlDataStoreRepository]).asEagerSingleton()
     bind(classOf[CrawlerService]).asEagerSingleton()
   }

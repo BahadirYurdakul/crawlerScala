@@ -16,6 +16,7 @@ import play.api.libs.json.{JsValue, Json}
 
 import scala.collection.mutable
 import scala.util.Try
+import scala.util.control.NonFatal
 
 @Singleton
 class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle)(implicit executionContext: ExecutionContext) {
@@ -72,7 +73,7 @@ class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle)(implici
     } catch {
       case _: IllegalStateException =>
         Logger.debug(s"Publisher already shut down. Publisher $publisher")
-      case _: Throwable =>
+      case NonFatal(_) =>
         Logger.error(s"Error while shut down publisher. Publisher $publisher")
     }
   }

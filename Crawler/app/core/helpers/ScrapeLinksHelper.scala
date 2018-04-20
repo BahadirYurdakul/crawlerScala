@@ -10,6 +10,7 @@ import org.jsoup.nodes.Document
 import play.api.Logger
 
 import scala.collection.mutable
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 @Singleton
@@ -26,14 +27,14 @@ class ScrapeLinksHelper @Inject ()(urlHelper: UrlHelper) {
         Logger.debug(s"Url: $baseUrl. Extracted link $link")
         val childUrl: UrlModel = UrlModel.parse(link, urlHelper) match {
           case Success(value: UrlModel) => value
-          case Failure(fail: Throwable) =>
+          case Failure(NonFatal(fail)) =>
             Logger.error(s"Url: $baseUrl. Error while extracting child link model. Child link: $link. Fail $fail")
             throw fail
         }
         parsedUrls += childUrl
       } catch {
         case e: MalformedURLException => Logger.error(s"Url: $baseUrl. Malformed url exception in child link. Exception: $e")
-        case exc: Throwable => Logger.info(s"Url: $baseUrl. Exception while parsing child link. Exception: $exc")
+        case NonFatal(exc) => Logger.info(s"Url: $baseUrl. Exception while parsing child link. Exception: $exc")
       }
     })
     parsedUrls.toList
