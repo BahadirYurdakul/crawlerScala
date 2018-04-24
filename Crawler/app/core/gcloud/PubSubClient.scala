@@ -5,12 +5,14 @@ import javax.inject.{Inject, Singleton}
 import com.google.cloud.pubsub.v1.Publisher
 import com.google.protobuf.ByteString
 import com.google.pubsub.v1.{ProjectTopicName, PubsubMessage, TopicName}
-import play.api.Logger
+import play.api.{ConfigLoader, Configuration, Logger}
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import com.google.api.core.{ApiFuture, ApiFutures}
 import java.util
 
+import com.typesafe.config.{ConfigFactory, ConfigList, ConfigValue}
+import models.GoogleProjectModel
 import play.api.inject.ApplicationLifecycle
 import play.api.libs.json.{JsValue, Json}
 
@@ -19,9 +21,74 @@ import scala.util.Try
 import scala.util.control.NonFatal
 
 @Singleton
-class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle)(implicit executionContext: ExecutionContext) {
+class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle, config: Configuration)
+                            (implicit executionContext: ExecutionContext) {
 
   private val publishers: mutable.Map[Int, Publisher] = mutable.Map[Int, Publisher]()
+
+  private val ps = config.getConfigList("googleProjects") map  { confs: java.util.List[Configuration] =>
+    confs.toArray() map { conf: AnyRef =>
+      val project = conf.asInstanceOf[Configuration]
+      getPublisher(project.get[String]("id"), project.get[String]("pubSubTopicName"))
+    }
+  }
+
+
+  /*
+  private val ps = defaultConfig.getConfigList("googleProjects").toArray().asInstanceOf[Array[Config]]
+    .map { project: Config =>
+      getPublisher(project.getString("id"), project.getString("pubSubTopicName"))
+    }
+    */
+
+
+  /*
+  private val ps = config.underlying.getConfigList("googleProjects").toArray().asInstanceOf[Array[Config]]
+    .map { project: Config =>
+      getPublisher(project.getString("id"), project.getString("pubSubTopicName"))
+    }
+    */
+
+
+  /*
+  private val ps = config.getConfigList("googleProjects") map  { confs: java.util.List[Configuration] =>
+    confs.toArray() map { conf: AnyRef =>
+      val project = conf.asInstanceOf[Configuration]
+      getPublisher(project.get[String]("id"), project.get[String]("pubSubTopicName"))
+    }
+  }
+  */
+
+
+  /*
+  private val ps = config.underlying.getConfigList("googleProjects").toArray().asInstanceOf[Array[Configuration]]
+  .map { project: Configuration =>
+    getPublisher(project.get[String]("id"), project.get[String]("pubSubTopicName"))
+  }
+
+ */
+
+
+  /*
+
+    private val ps: List[Publisher] = {
+    val a = config.get("googleProjects") map { project =>
+      getPublisher(project.id, project.pubSubTopicName)
+    }
+  }
+    config.getConfigList("googleProjects") foreach { confs: java.util.List[Configuration] =>
+    confs forEach { conf: Configuration =>
+      getPublisher(conf.get[String]("id"), conf.get[String]("pubSubTopicName"))
+      //Logger.error(s"ajsvakvbakjb::  ${conf.get[String]("id")}")
+    }
+  }
+
+    val a = config.getList("googleProjects")
+  Logger.error(s"err: $a")
+
+  private val googleProjects: Seq[String] = config.get[Seq[String]]("googleProjects")
+  Logger.error("pb :::" + googleProjects.toString())
+  */
 
   applicationLifecycle.addStopHook(() => {
     Future.successful(publishers.foreach(publisher => shutDownPublisher(publisher._2)))
