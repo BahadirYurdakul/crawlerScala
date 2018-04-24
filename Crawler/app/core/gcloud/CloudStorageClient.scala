@@ -39,7 +39,7 @@ class CloudStorageClient@Inject ()()(implicit executionContext: GCloudExecutor, 
       case Success(value: Array[Byte]) => value
       case Failure(NonFatal(fail)) =>
         Logger.error(s"Filename: $filename. Error while zipping content. Content: $content")
-        return Future.failed(fail)
+        throw fail
     }
 
     uploadToCloudStorage(filename, compressed, bucketName) flatMap { _ =>

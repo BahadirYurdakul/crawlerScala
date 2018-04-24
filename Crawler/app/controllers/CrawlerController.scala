@@ -3,6 +3,7 @@ package controllers
 import java.util.Base64
 import javax.inject._
 
+import core.utils.DataDecoder
 import models.{PubSubMessage, RequestUrl}
 import play.api.{Configuration, Logger}
 import play.api.libs.json.{JsError, JsSuccess, JsValue, Json}
@@ -28,7 +29,8 @@ case class TryCountExceededException(private val message: String = "", private v
 
 
 @Singleton
-class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: CrawlerService, config: Configuration)
+class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: CrawlerService, config: Configuration,
+                                  dataDecoder: DataDecoder)
                                  (implicit executor: ExecutionContext) extends AbstractController(cc) {
 
   val maxTryCountForUrl: Integer = config.getOptional[String]("maxTryCountForUrl").getOrElse("10").toInt
@@ -96,10 +98,6 @@ class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: Craw
     }
   }
 
-  def decodeData(encodedMessage: String): Try[String] = Try {
-    Base64.getDecoder.decode(encodedMessage).map(_.toChar).mkString
-  }
-
   def parseRequestData(data: String): Try[String] = Try {
     val jsonData: JsValue = Json.parse(s"""$data""")
     jsonData.validate(RequestUrl.url) match {
@@ -108,7 +106,7 @@ class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: Craw
         url.get.name
       case fail: JsError =>
         Logger.error(s"Invalid json body. Fail $fail")
-        return Failure(new Exception(fail.errors.mkString(", ")))
+        throw new Exception(fail.errors.mkString(", "))
     }
   }
 }

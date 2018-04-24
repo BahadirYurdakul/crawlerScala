@@ -124,11 +124,10 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
       case Success(value: String) => value
       case Failure(NonFatal(fail)) =>
         Logger.error(s"Url: $url. Error while encoding url. Fail $fail")
-        return Future.failed(fail)
+        throw fail
     }
 
     val rawHtml: String = downloadPageHelper.downloadPage(url)
     cloudStorageClient.zipThenUploadToCloudStorage(encodedUrl, rawHtml, bucketName)
   }
-
 }

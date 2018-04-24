@@ -8,4 +8,6 @@ case class PubSubMessage(message: PubSubData)
 object PubSubMessage {
   implicit val data: Reads[PubSubData] = Json.reads[PubSubData]
   implicit val message: Reads[PubSubMessage] = Json.reads[PubSubMessage]
+
+  def
 }

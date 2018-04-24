@@ -34,6 +34,7 @@ class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle, config:
   }
 
 
+  //todo solve deprecated
   /*
   private val ps = defaultConfig.getConfigList("googleProjects").toArray().asInstanceOf[Array[Config]]
     .map { project: Config =>

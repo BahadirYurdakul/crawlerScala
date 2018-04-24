@@ -69,7 +69,7 @@ class CrawlerUrlDataStoreRepository @Inject()(dataStoreClient: DataStoreClient, 
     dataStoreClient.upsertData(dataStore, data) recoverWith {
       case NonFatal(fail) =>
         Logger.error(s"Url: ${url.hostWithPath}. Cannot change the status of parent. Fail $fail")
-        return Future.failed(fail)
+        throw fail
     }
   }
 

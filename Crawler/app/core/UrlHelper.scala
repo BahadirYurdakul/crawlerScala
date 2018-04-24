@@ -18,7 +18,7 @@ class UrlHelper {
     val domainArray: Array[String] = host.split('.')
     if(domainArray == null || domainArray.length < 2){
       Logger.error(s"Url host is invalid while trying to get domain from host. Host: $host")
-      return Failure(new Exception(s"Url host is invalid. Host: $host"))
+      throw new Exception(s"Url host is invalid. Host: $host")
     } else {
       domainArray(domainArray.length - 2)
     }
