@@ -10,34 +10,35 @@ import scala.util.{Failure, Success, Try}
 case class UrlModel(parsedUrl: URL, domain: String, protocol: String, protocolWithHost: String
                     , hostWithPath: String, protocolWithHostWithPath: String)
 
+case class ParsedUrlAndDomain(parsedUrl: URL, domain: String)
+
 
 object UrlModel {
 
   def parse(url: String, urlHelper: UrlHelper): Try[UrlModel] = {
 
-    val parsedUrl: URL = urlHelper.parseUrl(url) match {
-      case Success(value) => value
+      getParsedUrlAndDomain(url, urlHelper) match {
+      case Success(value) =>
+        val protocol: String = value.parsedUrl.getProtocol
+        val protocolWithHost: String = protocol + "://" + value.parsedUrl.getHost
+        val hostWithPath: String = "^www.".r.replaceFirstIn(value.parsedUrl.getHost, "") + value.parsedUrl.getPath +
+          getQuery(value.parsedUrl)
+        val protocolWithHostWithPath: String = protocolWithHost + value.parsedUrl.getPath + getQuery(value.parsedUrl)
+        Success(UrlModel(value.parsedUrl, value.domain, protocol, protocolWithHost, hostWithPath, protocolWithHostWithPath))
       case Failure(fail) =>
-        Logger.error(s"Url $url. Error while parse: ${fail.getMessage}")
-        throw UrlParseException(s"Url $url. Error while parse: ${fail.getMessage}")
+        Logger.error(s"Url $url. Error while parsing url.")
+        Failure(UrlParseException(fail.getMessage.mkString(", ")))
     }
-
-    val domain: String = urlHelper.getDomainFromHost(parsedUrl.getHost) match {
-      case Success(value) => value
-      case Failure(fail) =>
-        Logger.error(s"Url $url. Error while get domain: ${fail.getMessage}")
-        throw UrlParseException(s"Url $url. Error while get domain: ${fail.getMessage}")
-    }
-
-    val protocol: String = parsedUrl.getProtocol
-    val protocolWithHost: String = protocol + "://" + parsedUrl.getHost
-    val hostWithPath: String = "^www.".r.replaceFirstIn(parsedUrl.getHost, "") + parsedUrl.getPath + getQuery(parsedUrl)
-    val protocolWithHostWithPath: String = protocolWithHost + parsedUrl.getPath + getQuery(parsedUrl)
-    Success(UrlModel(parsedUrl, domain, protocol, protocolWithHost, hostWithPath, protocolWithHostWithPath))
-
   }
 
-  def getQuery(parsedUrl: URL): String = {
+  private def getParsedUrlAndDomain(url: String ,urlHelper: UrlHelper): Try[ParsedUrlAndDomain] = {
+    for {
+      parsedUrl <- urlHelper.parseUrl(url)
+      domain <- urlHelper.getDomainFromHost(parsedUrl.getHost)
+    } yield ParsedUrlAndDomain(parsedUrl, domain)
+  }
+
+  private def getQuery(parsedUrl: URL): String = {
     if(parsedUrl.getQuery == null) "" else "?" + parsedUrl.getQuery
   }
 }

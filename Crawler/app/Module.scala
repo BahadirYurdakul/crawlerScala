@@ -1,11 +1,10 @@
 import com.google.inject.AbstractModule
-import java.time.Clock
-
 import controllers.CrawlerController
 import core.UrlHelper
 import core.gcloud.{CloudStorageClient, DataStoreClient, PubSubClient}
 import core.helpers.{DownloadPageHelper, ScrapeLinksHelper, ZipHelper}
-import dispatchers.{GCloudExecutor, WebsiteDownloaderExecutor}
+import dispatchers.Contexts
+//import dispatchers.{Contexts, GCloudExecutor, WebsiteDownloaderExecutor}
 import repository.CrawlerUrlDataStoreRepository
 import services.CrawlerService
 
@@ -31,10 +30,11 @@ class Module extends AbstractModule {
     bind(classOf[ScrapeLinksHelper]).asEagerSingleton()
     bind(classOf[ZipHelper]).asEagerSingleton()
     bind(classOf[UrlHelper]).asEagerSingleton()
-    bind(classOf[GCloudExecutor]).asEagerSingleton()
-    bind(classOf[WebsiteDownloaderExecutor]).asEagerSingleton()
+    //bind(classOf[GCloudExecutor]).asEagerSingleton()
+    //bind(classOf[WebsiteDownloaderExecutor]).asEagerSingleton()
     bind(classOf[CrawlerUrlDataStoreRepository]).asEagerSingleton()
     bind(classOf[CrawlerService]).asEagerSingleton()
+    bind(classOf[Contexts]).asEagerSingleton()
   }
 
 }

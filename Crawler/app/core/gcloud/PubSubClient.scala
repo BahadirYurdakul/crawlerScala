@@ -12,6 +12,7 @@ import com.google.api.core.{ApiFuture, ApiFutures}
 import java.util
 
 import com.typesafe.config.{ConfigFactory, ConfigList, ConfigValue}
+import dispatchers.Contexts
 import models.GoogleProjectModel
 import play.api.inject.ApplicationLifecycle
 import play.api.libs.json.{JsValue, Json}
@@ -21,8 +22,7 @@ import scala.util.Try
 import scala.util.control.NonFatal
 
 @Singleton
-class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle, config: Configuration)
-                            (implicit executionContext: ExecutionContext) {
+class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle, config: Configuration, contexts: Contexts) {
 
   private val publishers: mutable.Map[Int, Publisher] = mutable.Map[Int, Publisher]()
 
@@ -103,18 +103,21 @@ class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle, config:
     Publisher.newBuilder(topic).build
   }
 
-  def publishToPubSub(projectId: String, topicId: String, messages: List[JsValue]): Future[Unit] = Future {
-    val publisher: Publisher = getPublisher(projectId, topicId)
-    val messageIdFutures: util.ArrayList[ApiFuture[String]] = new util.ArrayList[ApiFuture[String]]
-    for (message: JsValue <- messages) {
-      val pubSubMessage: PubsubMessage = buildPubSubMessage(message)
-      val messageIdFuture: ApiFuture[String] = publisher.publish(pubSubMessage)
-      messageIdFutures.add(messageIdFuture)
+  def publishToPubSub(projectId: String, topicId: String, messages: List[JsValue]): Future[Unit] = {
+    implicit val executor: ExecutionContext = contexts.gcloudOperations
+    Future {
+      val publisher: Publisher = getPublisher(projectId, topicId)
+      val messageIdFutures: util.ArrayList[ApiFuture[String]] = new util.ArrayList[ApiFuture[String]]
+      for (message: JsValue <- messages) {
+        val pubSubMessage: PubsubMessage = buildPubSubMessage(message)
+        val messageIdFuture: ApiFuture[String] = publisher.publish(pubSubMessage)
+        messageIdFutures.add(messageIdFuture)
+      }
+      val messageIds: util.List[String] = ApiFutures.allAsList(messageIdFutures).get
+      messageIds.forEach(messageId => {
+        Logger.debug(s"Message: published with message ID: $messageId by Publisher $publisher")
+      })
     }
-    val messageIds: util.List[String] = ApiFutures.allAsList(messageIdFutures).get
-    messageIds.forEach(messageId => {
-      Logger.debug(s"Message: published with message ID: $messageId by Publisher $publisher")
-    })
   }
 
   private def getPublisher(projectId: String, topicId: String): Publisher = {

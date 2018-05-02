@@ -6,17 +6,17 @@ import com.google.auth.oauth2.GoogleCredentials
 import com.google.cloud.datastore._
 import java.io.FileInputStream
 
-import dispatchers.GCloudExecutor
+import dispatchers.Contexts
 import play.Logger
 import play.api.Configuration
 import play.api.inject.ApplicationLifecycle
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
+import scala.util.{Failure, Success, Try}
 import scala.util.control.NonFatal
 
 @Singleton
-class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, config: Configuration)
-                               (implicit executionContext: GCloudExecutor) {
+class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, config: Configuration, contexts: Contexts) {
 
   private val keyFilePath: String = config.getOptional[String]("googleCloudKeyFilePath").getOrElse("keyfile.json")
 
@@ -31,25 +31,34 @@ class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, conf
     dataStore.newKeyFactory.setKind(kindName)
   }
 
-  def insertData(dataStore: Datastore, dataList: List[Entity]): Future[Unit] = Future[Unit] {
-    try {
-      dataStore.add(dataList: _*)
-    } catch {
-      case e: com.google.cloud.datastore.DatastoreException if e.getCode == 6 =>
-        Logger.debug(s"Entity already exist error while inserting to data store $dataList. Exception $e")
-      case NonFatal(exc) =>
-        Logger.error(s"Exception while insert data to dataStore $dataList. Exception $exc")
-        Future.failed(exc)
+  def insertData(dataStore: Datastore, dataList: List[Entity]): Future[Unit] = {
+    implicit val executor: ExecutionContext = contexts.dbWriteOperations
+    Future {
+      Try[Unit] {
+        dataStore.add(dataList: _*)
+        Success((): Unit)
+      } recover {
+        case e: com.google.cloud.datastore.DatastoreException if e.getCode == 6 =>
+          Logger.debug(s"Entity already exist error while inserting to data store $dataList. Exception $e")
+          Success((): Unit)
+        case NonFatal(exc) =>
+          Logger.error(s"Exception while insert data to dataStore $dataList. Exception $exc")
+          Failure(exc)
+      }
     }
   }
 
-  def upsertData(dataStore: Datastore, data: Entity): Future[Unit] = Future[Unit] {
-    try {
-      dataStore.put(data)
-    } catch {
-      case NonFatal(fail) =>
-        Logger.error(s"Error while upserting data to dataStore. Fail: $fail")
-        Future.failed(fail)
+  def upsertData(dataStore: Datastore, data: Entity): Future[Unit] = {
+    implicit val executor: ExecutionContext = contexts.dbWriteOperations
+    Future {
+      Try {
+        dataStore.put(data)
+      } match {
+        case Success(_) => Success((): Unit)
+        case Failure(NonFatal(fail)) =>
+          Logger.error(s"Error while upserting data to dataStore. Fail: $fail")
+          Failure(fail)
+      }
     }
   }
 
@@ -58,26 +67,32 @@ class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, conf
   }
 
   def getData(dataStore: Datastore, keyFactory: KeyFactory, key: String): Future[Option[Entity]] = {
-    try {
+    Try {
       val taskKey: Key = createKey(keyFactory, key)
       val item: Entity = dataStore.get(taskKey, ReadOption.eventualConsistency())
       Logger.debug(s"Data store item get: $item")
-      Future.successful(Option(item))
-    } catch {
-      case NonFatal(fail) =>
-        Logger.error(s"Error while get data from dataStore. Fail: $fail ")
+      Option(item)
+    } match {
+      case Success(value) =>
+        Future.successful(value)
+      case Failure(NonFatal(fail)) =>
+        Logger.error(s"Error while getting data from dataStore. Key $key, dataStore: $dataStore")
         Future.failed(fail)
     }
   }
 
-  def deleteEntity(key: String, dataStore: Datastore, keyFactory: KeyFactory): Future[Unit] = Future[Unit] {
-    try {
-      val taskKey: Key = createKey(keyFactory, key)
-      dataStore.delete(taskKey)
-    } catch {
-      case NonFatal(dataStoreException) =>
-        Logger.error("Error while delete data from dataStore")
-        Future.failed(dataStoreException)
+  def deleteEntity(key: String, dataStore: Datastore, keyFactory: KeyFactory): Future[Unit] = {
+    implicit val executor: ExecutionContext = contexts.dbWriteOperations
+    Future {
+      Try {
+        val taskKey: Key = createKey(keyFactory, key)
+        dataStore.delete(taskKey)
+      } match {
+        case Success(_) => Success((): Unit)
+        case Failure(NonFatal(fail)) =>
+          Logger.error("Error while delete data from dataStore")
+          Failure(fail)
+      }
     }
   }
 }
