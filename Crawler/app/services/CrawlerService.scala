@@ -40,6 +40,7 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
 
   def crawl(url: String): Future[Unit] = {
     implicit val gcloudExecutor: ExecutionContext = contexts.gcloudOperations
+
     val initialDataStoreParentData: Future[DataStoreWithUrlModel] = for {
       parsedUrl <- Future.fromTry(UrlModel.parse(url, urlHelper))
       parentData: CrawlerUrlDataStoreModel <- getDataStoreDataAndCheckCrawlNeeded(parsedUrl)
@@ -115,7 +116,7 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
 
     (for {
       _ <- dataStoreRepository.insertToDataStore(parentParsedUrl.hostWithPath, childDataStoreEntities)
-      //_ <- pubSubClient.publishToPubSub(crawlerProjectId, crawlerPubSubTopicName, messageList)
+      _ <- pubSubClient.publishToPubSub(crawlerProjectId, crawlerPubSubTopicName, messageList)
       out <- dataStoreRepository.setParentStatus(parentDataStoreData, StatusKey.Done)
     } yield out)(contexts.gcloudOperations) recover {
       case NonFatal(fail) =>

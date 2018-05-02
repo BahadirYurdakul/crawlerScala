@@ -1,11 +1,12 @@
 package models
 
-import com.typesafe.config.Config
+import com.typesafe.config.{Config, ConfigObject}
 import play.api.ConfigLoader
 
 case class GoogleProjectModel(id: String, pubSubTopicName: String, dataStoreKind: String, keyfilePath: String,
                                storageBucket: String)
 
+/*
 object GoogleProjectModel {
 
   implicit val configLoader: ConfigLoader[GoogleProjectModel] = (rootConfig: Config, path: String) => {
@@ -20,4 +21,5 @@ object GoogleProjectModel {
     )
   }
 }
+*/
 
