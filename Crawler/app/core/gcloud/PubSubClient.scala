@@ -12,19 +12,17 @@ import com.google.api.core.{ApiFuture, ApiFutures}
 import java.util
 
 import com.typesafe.config.Config
-import dispatchers.Contexts
+import dispatchers.ExecutionContexts
 import play.api.inject.ApplicationLifecycle
 import play.api.libs.json.{JsValue, Json}
 
-import scala.collection.mutable
-import scala.util.Try
 import scala.util.control.NonFatal
 
 case class PubSubNotFoundException(private val message: String = "", private val cause: Throwable = None.orNull)
   extends Exception(message, cause)
 
 @Singleton
-class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle, config: Configuration, contexts: Contexts) {
+class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle, config: Configuration, ExecutionContexts: ExecutionContexts) {
 
   private val confArr: Array[AnyRef] = config.underlying.getConfigList("googleProjects").toArray
   private val publisherArr: Array[Publisher] = confArr map { conf: AnyRef =>
@@ -40,12 +38,10 @@ class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle, config:
     ProjectTopicName.of(projectName, topicName)
   }
 
-  private def publisherBuilder(topic: ProjectTopicName): Publisher = {
-    Publisher.newBuilder(topic).build
-  }
+  private def publisherBuilder(topic: ProjectTopicName): Publisher = Publisher.newBuilder(topic).build
 
   def publishToPubSub(projectId: String, topicId: String, messages: List[JsValue]): Future[Unit] = {
-    implicit val executor: ExecutionContext = contexts.gcloudOperations
+    implicit val executor: ExecutionContext = ExecutionContexts.gcloudOperations
     Future {
       getPublisher(projectId, topicId) match {
         case None =>
@@ -72,7 +68,6 @@ class PubSubClient @Inject()(applicationLifecycle: ApplicationLifecycle, config:
     else
       Some(publishers(0))
   }
-
 
   private def createPublisher(projectId: String, topicId: String): Publisher = {
     val topic: ProjectTopicName = topicNameBuilder(projectId, topicId)

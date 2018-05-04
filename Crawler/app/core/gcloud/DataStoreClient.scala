@@ -6,7 +6,7 @@ import com.google.auth.oauth2.GoogleCredentials
 import com.google.cloud.datastore._
 import java.io.FileInputStream
 
-import dispatchers.Contexts
+import dispatchers.ExecutionContexts
 import play.Logger
 import play.api.Configuration
 import play.api.inject.ApplicationLifecycle
@@ -16,7 +16,7 @@ import scala.util.{Failure, Success, Try}
 import scala.util.control.NonFatal
 
 @Singleton
-class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, config: Configuration, contexts: Contexts) {
+class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, config: Configuration, ExecutionContexts: ExecutionContexts) {
 
   private val keyFilePath: String = config.getOptional[String]("googleCloudKeyFilePath").getOrElse("keyfile.json")
 
@@ -32,7 +32,7 @@ class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, conf
   }
 
   def insertData(dataStore: Datastore, dataList: List[Entity]): Future[Unit] = {
-    implicit val executor: ExecutionContext = contexts.dbWriteOperations
+    implicit val executor: ExecutionContext = ExecutionContexts.dbWriteOperations
     Future {
       Try[Unit] {
         dataStore.add(dataList: _*)
@@ -49,7 +49,7 @@ class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, conf
   }
 
   def upsertData(dataStore: Datastore, data: Entity): Future[Unit] = {
-    implicit val executor: ExecutionContext = contexts.dbWriteOperations
+    implicit val executor: ExecutionContext = ExecutionContexts.dbWriteOperations
     Future {
       Try {
         dataStore.put(data)
@@ -82,7 +82,7 @@ class DataStoreClient @Inject()(applicationLifecycle: ApplicationLifecycle, conf
   }
 
   def deleteEntity(key: String, dataStore: Datastore, keyFactory: KeyFactory): Future[Unit] = {
-    implicit val executor: ExecutionContext = contexts.dbWriteOperations
+    implicit val executor: ExecutionContext = ExecutionContexts.dbWriteOperations
     Future {
       Try {
         val taskKey: Key = createKey(keyFactory, key)

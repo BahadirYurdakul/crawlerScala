@@ -31,7 +31,6 @@ class ZipHelper {
     compressedBytes
   }
 
-
   private def writeIntoZipEntryThenCloseStreams(zipEntry: ZipEntry, zipOutStream: ZipOutputStream,
                                                 arrOutStream: ByteArrayOutputStream, content: String): Try[Array[Byte]] = {
     val compressedContent: Try[Array[Byte]] = Try {

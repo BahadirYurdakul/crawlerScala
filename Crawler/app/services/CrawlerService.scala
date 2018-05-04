@@ -7,7 +7,7 @@ import core.gcloud.{CloudStorageClient, PubSubClient}
 import core.UrlHelper
 import core.helpers.{DownloadPageHelper, ScrapeLinksHelper}
 import core.utils.{StatusKey, UrlModel, UrlParseException}
-import dispatchers.Contexts
+import dispatchers.ExecutionContexts
 import models.RequestUrl
 import play.Logger
 import play.api.Configuration
@@ -30,7 +30,7 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
                                scrapeLinksHelper: ScrapeLinksHelper, config: Configuration,
                                crawlerUrlRepository: CrawlerUrlDataStoreRepository,
                                cloudStorageClient: CloudStorageClient,
-                               contexts: Contexts,
+                               ExecutionContexts: ExecutionContexts,
                                urlHelper: UrlHelper) {
 
   private val crawlerProjectId: String = config.get[String]("crawlerProjectId")
@@ -38,8 +38,9 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
   private val bucketName: String = config.get[String]("crawlerBucket")
   private val maxTryCountForUrl: Int = config.getOptional[Int]("maxTryCountForUrl").getOrElse(10)
 
+  implicit val gcloudExecutor: ExecutionContext = ExecutionContexts.gcloudOperations
+
   def crawl(url: String): Future[Unit] = {
-    implicit val gcloudExecutor: ExecutionContext = contexts.gcloudOperations
 
     val initialDataStoreParentData: Future[DataStoreWithUrlModel] = for {
       parsedUrl <- Future.fromTry(UrlModel.parse(url, urlHelper))
@@ -49,7 +50,7 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
 
     initialDataStoreParentData.flatMap( data =>
       scrapeLinksUploadToStorageAndRecordIntoDataStore(url, data.crawlerUrlDataStoreModel, data.urlModel)
-    )(gcloudExecutor) recoverWith {
+    ) recoverWith {
       case exc@(IllegalToCrawlUrlException(_, _) | UrlParseException(_, _)) =>
         Logger.error(s"Url $url. Non-recoverable exception found. Fail $exc")
         Future.successful((): Unit)
@@ -61,12 +62,10 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
 
   def scrapeLinksUploadToStorageAndRecordIntoDataStore(url: String, parentDataStoreData: CrawlerUrlDataStoreModel,
                                                        parsedParent: UrlModel): Future[Unit] = {
-    implicit val gcloudExecutor: ExecutionContext = contexts.gcloudOperations
-
     (for {
       rawHtml <- downloadPageAndUploadToCloudStorage(url)
       result <- extractUrlsThenRecordThem(parsedParent, parentDataStoreData, rawHtml)
-    } yield result)(gcloudExecutor) recoverWith {
+    } yield result) recoverWith {
       case fail: Throwable =>
         Logger.error(s"Url: $url. Error while crawling. Fail $fail")
         dataStoreRepository.setParentStatus(parentDataStoreData, StatusKey.NotCrawled)
@@ -75,8 +74,6 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
   }
 
   def getDataStoreDataAndCheckCrawlNeeded(parsedUrl: UrlModel): Future[CrawlerUrlDataStoreModel] = {
-    implicit val gcloudExecutor: ExecutionContext = contexts.gcloudOperations
-
     dataStoreRepository.getDataByUrlHostWithPath(parsedUrl.hostWithPath) map {
       case Some(value) =>
         if (isCrawlNeeded(value)) dataStoreRepository.incrementFailedCount(value)
@@ -109,16 +106,15 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
   def extractUrlsThenRecordThem(parentParsedUrl: UrlModel, parentDataStoreData: CrawlerUrlDataStoreModel,
                                 rawHtml: String): Future[Unit] = {
 
-    implicit val gcloudExecutor: ExecutionContext = contexts.gcloudOperations
     val childLinks: List[UrlModel] = extractChildUrls(parentParsedUrl, rawHtml)
     val childDataStoreEntities: List[CrawlerUrlDataStoreModel] = dataStoreRepository.convertUrlModelToDataStoreModel(childLinks)
     val messageList: List[JsValue] = childLinks.map(childLink => RequestUrl.jsonBuildWithUrl(childLink.protocolWithHostWithPath))
 
     (for {
       _ <- dataStoreRepository.insertToDataStore(parentParsedUrl.hostWithPath, childDataStoreEntities)
-      _ <- pubSubClient.publishToPubSub(crawlerProjectId, crawlerPubSubTopicName, messageList)
+      //_ <- pubSubClient.publishToPubSub(crawlerProjectId, crawlerPubSubTopicName, messageList)
       out <- dataStoreRepository.setParentStatus(parentDataStoreData, StatusKey.Done)
-    } yield out)(contexts.gcloudOperations) recover {
+    } yield out) recover {
       case NonFatal(fail) =>
         Logger.error(s"Url: ${parentParsedUrl.hostWithPath}. Error while extract url, record and publish. Fail $fail")
         throw fail
@@ -137,5 +133,5 @@ class CrawlerService @Inject()(downloadPageHelper: DownloadPageHelper, dataStore
         Logger.error(s"Url: $url. Error while download page and upload to cloud storage. Fail $fail")
         throw fail
     }
-  )(contexts.gcloudOperations)
+  )
 }

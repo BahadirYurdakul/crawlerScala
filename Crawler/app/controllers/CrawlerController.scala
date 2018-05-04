@@ -2,7 +2,7 @@ package controllers
 
 import javax.inject._
 
-import dispatchers.Contexts
+import dispatchers.ExecutionContexts
 import models.{PubSubMessage, RequestUrl}
 import play.api.{Configuration, Logger}
 import play.api.libs.json.JsValue
@@ -16,7 +16,7 @@ import scala.util.{Failure, Success, Try}
 
 
 @Singleton
-class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: CrawlerService, config: Configuration, contexts: Contexts)
+class CrawlerController @Inject()(cc: ControllerComponents, crawlerService: CrawlerService, config: Configuration, ExecutionContexts: ExecutionContexts)
                                  (implicit executionContext: ExecutionContext) extends AbstractController(cc) {
 
   def crawl(): Action[JsValue] = Action.async(parse.json) { request: Request[JsValue] =>

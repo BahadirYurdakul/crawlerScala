@@ -12,6 +12,9 @@ case class UrlModel(parsedUrl: URL, domain: String, protocol: String, protocolWi
 
 case class ParsedUrlAndDomain(parsedUrl: URL, domain: String)
 
+case class UrlParseException(private val message: String = "", private val cause: Throwable = None.orNull)
+  extends Exception(message, cause)
+
 
 object UrlModel {
 
@@ -42,8 +45,5 @@ object UrlModel {
     if(parsedUrl.getQuery == null) "" else "?" + parsedUrl.getQuery
   }
 }
-
-case class UrlParseException(private val message: String = "", private val cause: Throwable = None.orNull)
-  extends Exception(message, cause)
 
 

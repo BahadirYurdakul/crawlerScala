@@ -8,7 +8,7 @@ import core.utils.{StatusKey, UrlModel}
 import play.Logger
 import play.api.Configuration
 import com.google.cloud.Timestamp
-import dispatchers.Contexts
+import dispatchers.ExecutionContexts
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
@@ -17,13 +17,13 @@ import scala.util.control.NonFatal
 case class CrawlerUrlDataStoreModel(id: String, protocol: String, domain: String, status: StatusKey.Value, tryCount: Int)
 
 @Singleton
-class CrawlerUrlDataStoreRepository @Inject()(dataStoreClient: DataStoreClient, config: Configuration, contexts: Contexts) {
+class CrawlerUrlDataStoreRepository @Inject()(dataStoreClient: DataStoreClient, config: Configuration, ExecutionContexts: ExecutionContexts) {
 
   private val dataStore: Datastore = dataStoreClient.getDataStore(config.get[String]("crawlerProjectId"))
   private val keyFactory: KeyFactory = dataStoreClient.getKeyFactory(dataStore, config.get[String]("crawlerUrlKindForDataStore"))
 
   def insertToDataStore(url: String, CrawlerUrlDataStoreModelList: List[CrawlerUrlDataStoreModel]): Future[Unit] = {
-    implicit val executor: ExecutionContext = contexts.dbWriteOperations
+    implicit val executor: ExecutionContext = ExecutionContexts.dbWriteOperations
     val dataList: List[Entity] = CrawlerUrlDataStoreModelList.map(CrawlerUrlDataStoreModelList => createDataStoreInstance(CrawlerUrlDataStoreModelList))
     dataStoreClient.insertData(dataStore, dataList) recover {
       case NonFatal(fail) =>
@@ -62,7 +62,7 @@ class CrawlerUrlDataStoreRepository @Inject()(dataStoreClient: DataStoreClient, 
   }
 
   def getDataByUrlHostWithPath(hostWithPath: String): Future[Option[CrawlerUrlDataStoreModel]] = {
-    implicit val executor: ExecutionContext = contexts.dbReadOperations
+    implicit val executor: ExecutionContext = ExecutionContexts.dbReadOperations
     dataStoreClient.getData(dataStore, keyFactory, hostWithPath) map {
       case Some(entity: Entity) => crawlerUrlBuildFromEntity(entity)
       case None => None
@@ -74,19 +74,19 @@ class CrawlerUrlDataStoreRepository @Inject()(dataStoreClient: DataStoreClient, 
   }
 
   def setParentStatus(crawlerUrlDataStoreModel: CrawlerUrlDataStoreModel, status: StatusKey.Value, tryCount: Int): Future[Unit] = {
-    implicit val executor: ExecutionContext = contexts.dbWriteOperations
+    implicit val executor: ExecutionContext = ExecutionContexts.dbWriteOperations
     val statusChangedModel = crawlerUrlDataStoreModel.copy(status = status, tryCount = tryCount)
     createInstanceThenUpsert(statusChangedModel)
   }
 
   def setParentStatus(crawlerUrlDataStoreModel: CrawlerUrlDataStoreModel, status: StatusKey.Value): Future[Unit] = {
-    implicit val executor: ExecutionContext = contexts.dbWriteOperations
+    implicit val executor: ExecutionContext = ExecutionContexts.dbWriteOperations
     val statusChangedModel = crawlerUrlDataStoreModel.copy(status = status)
     createInstanceThenUpsert(statusChangedModel)
   }
 
   private def createInstanceThenUpsert(crawlerUrlDataStoreModel: CrawlerUrlDataStoreModel): Future[Unit] = {
-    implicit val executor: ExecutionContext = contexts.dbWriteOperations
+    implicit val executor: ExecutionContext = ExecutionContexts.dbWriteOperations
     val data: Entity = createDataStoreInstance(crawlerUrlDataStoreModel)
     dataStoreClient.upsertData(dataStore, data) recoverWith {
       case NonFatal(fail) =>
